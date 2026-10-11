@@ -1,0 +1,19 @@
+{
+  "name": "editstatic",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Click-to-edit for plain HTML sites. Shared editor core, local (desktop) server, live web app.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "node --test \"packages/*/test/*.test.js\"",
+    "local": "node apps/local/server.js fixtures/sample-site --port 8450"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
