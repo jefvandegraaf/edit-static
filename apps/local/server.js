@@ -2,8 +2,12 @@
 // writes saves straight back into the files. This is the engine the desktop app
 // wraps. Listens on 127.0.0.1 only.
 //
-//   node apps/local/server.js <site-folder> [--port 8450]
+//   node apps/local/server.js <site-folder> [--port 8450] [--commit] [--push]
+//
+// --commit  commit each save (the page plus any uploaded images) to the site's git repo
+// --push    also push after each commit, so a host that deploys from the repo publishes it
 import http from 'node:http';
+import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,9 +15,13 @@ import { createHash } from 'node:crypto';
 import { annotate, applyEdits, hashText } from '@editstatic/core';
 
 const args = process.argv.slice(2);
-const siteArg = args.find(a => !a.startsWith('--'));
+
 const port = Number(args[args.indexOf('--port') + 1]) || 8450;
-if (!siteArg) { console.error('Usage: node apps/local/server.js <site-folder> [--port 8450]'); process.exit(1); }
+const COMMIT = args.includes('--commit') || args.includes('--push');
+const PUSH = args.includes('--push');
+const siteArgs = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--port');
+const siteArg = siteArgs[0];
+if (!siteArg) { console.error('Usage: node apps/local/server.js <site-folder> [--port 8450] [--commit] [--push]'); process.exit(1); }
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SITE = path.resolve(process.cwd(), siteArg);
@@ -97,6 +105,29 @@ async function servePage(res, file, urlPath) {
   send(res, 200, annotate(source, { inject }).html, MIME['.html']);
 }
 
+// ---------- git ----------
+const git = (...gitArgs) => new Promise((resolve, reject) => {
+  execFile('git', gitArgs, { cwd: SITE, windowsHide: true }, (err, stdout, stderr) =>
+    err ? reject(new Error((stderr || err.message).trim())) : resolve(stdout.trim()));
+});
+
+// Images uploaded since the last commit; they go into the next save's commit.
+const pendingUploads = new Set();
+
+async function commitSave(file, count) {
+  const rel = path.relative(SITE, file).split(path.sep).join('/');
+  const uploads = [...pendingUploads];
+  await git('add', '--', rel, ...uploads);
+  // Committing by path leaves anything else the owner has staged alone.
+  await git('commit', '-m', `Edit ${rel} (${count} change${count === 1 ? '' : 's'}) with EditStatic`, '--', rel, ...uploads);
+  uploads.forEach(u => pendingUploads.delete(u));
+  console.log(`committed ${rel}`);
+  if (PUSH) {
+    // Pushing can take a few seconds; the editor doesn't wait for it.
+    git('push').then(() => console.log('pushed')).catch(err => console.error('push failed:', err.message));
+  }
+}
+
 // ---------- API ----------
 // Writes only come from the editor's own page: same Host, same Origin, and a
 // custom header a cross-site form or image tag can't send.
@@ -122,7 +153,13 @@ async function handleApi(req, res, route, query) {
     const result = applyEdits(source, body.edits);
     if (result.applied.length) await fs.writeFile(file, result.html, 'utf8');
     console.log(`saved ${path.relative(SITE, file)}: ${result.applied.length} edit(s)${result.errors.length ? `, ${result.errors.length} refused` : ''}`);
-    return json(res, 200, { ok: true, applied: result.applied, errors: result.errors, version: await hashText(result.html) });
+    let committed = false;
+    if (COMMIT && result.applied.length && result.html !== source) {
+      // The file is saved either way; a git problem is reported, not fatal.
+      try { await commitSave(file, result.applied.length); committed = true; }
+      catch (err) { console.error('commit failed:', err.message); }
+    }
+    return json(res, 200, { ok: true, applied: result.applied, errors: result.errors, committed, version: await hashText(result.html) });
   }
 
   if (route === 'upload' && req.method === 'POST') {
@@ -134,6 +171,7 @@ async function handleApi(req, res, route, query) {
     const name = `${base}-${createHash('sha256').update(data).digest('hex').slice(0, 6)}${ext}`;
     await fs.mkdir(path.join(SITE, UPLOAD_DIR), { recursive: true });
     await fs.writeFile(path.join(SITE, UPLOAD_DIR, name), data);
+    pendingUploads.add(`${UPLOAD_DIR}/${name}`);
     return json(res, 200, { url: `/${UPLOAD_DIR}/${name}` });
   }
 
@@ -167,6 +205,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`EditStatic editing ${SITE}`);
+  console.log(`EditStatic editing ${SITE}${PUSH ? ' (commit + push on save)' : COMMIT ? ' (commit on save)' : ''}`);
   console.log(`Open http://127.0.0.1:${port}/`);
 });

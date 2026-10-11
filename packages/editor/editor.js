@@ -127,6 +127,20 @@
       if (on) { el.setAttribute('contenteditable', 'true'); el.setAttribute('spellcheck', 'true'); }
       else { el.removeAttribute('contenteditable'); el.removeAttribute('spellcheck'); }
     }
+    // Open every <details> (FAQ answers) so hidden text can be edited too. An
+    // exclusive accordion (name="…") only allows one open, so its name is set
+    // aside while editing. None of this is saved: only region contents are.
+    for (const d of document.querySelectorAll('details')) {
+      if (on) {
+        if (!d.dataset.esWasOpen) d.dataset.esWasOpen = d.open ? '1' : '0';
+        if (d.name) { d.dataset.esName = d.name; d.removeAttribute('name'); }
+        d.open = true;
+      } else if (d.dataset.esWasOpen) {
+        d.open = d.dataset.esWasOpen === '1';
+        if (d.dataset.esName) d.setAttribute('name', d.dataset.esName);
+        delete d.dataset.esWasOpen; delete d.dataset.esName;
+      }
+    }
     if (!on) closePop();
   }
 
@@ -164,7 +178,7 @@
     if (!editing || e.composedPath().includes(host)) return;
     const img = e.target.closest?.('img[data-es]');
     if (img) { e.preventDefault(); e.stopPropagation(); openPop(img); return; }
-    if (e.target.closest?.('a, button, input[type=submit], label')) { e.preventDefault(); }
+    if (e.target.closest?.('a, button, input[type=submit], label, summary')) { e.preventDefault(); }
     if (!e.target.closest?.('[data-es]')) closePop();
   }, true);
   document.addEventListener('submit', e => { if (editing) e.preventDefault(); }, true);
