@@ -148,7 +148,9 @@
   for (const el of images) original.set(el, { src: el.getAttribute('src'), alt: el.getAttribute('alt'), srcset: el.getAttribute('srcset') });
 
   // ---------- text editing ----------
-  const MULTILINE = new Set(['P', 'BLOCKQUOTE', 'LI', 'TD', 'TH', 'DD', 'DIV', 'FIGCAPTION', 'ADDRESS']);
+  // Enter puts a line break (<br>) where the caret is, so a heading breaks where
+  // the author wants. Buttons, links and other one-line labels never break.
+  const ONE_LINE = new Set(['A', 'BUTTON', 'LABEL', 'SUMMARY', 'SPAN', 'SMALL', 'STRONG', 'EM', 'B', 'I', 'TIME', 'CODE', 'ABBR', 'CITE', 'Q', 'SUB', 'SUP']);
 
   document.addEventListener('input', e => { if (e.target.closest?.('[data-es]')) refresh(); }, true);
 
@@ -158,7 +160,7 @@
     if (!el) return;
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (e.shiftKey && MULTILINE.has(el.tagName)) document.execCommand('insertLineBreak');
+      if (!ONE_LINE.has(el.tagName)) document.execCommand('insertLineBreak');
     }
     if (e.key === 'Escape') el.blur();
   }, true);
