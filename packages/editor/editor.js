@@ -26,8 +26,10 @@
     html.es-on img[data-es] { cursor: pointer; }
     html.es-on [data-es]:hover { outline: 2px dashed #2563eb !important; outline-offset: 3px; }
     html.es-on [data-es]:focus { outline: 2px solid #2563eb !important; outline-offset: 3px; }
-    html.es-on [data-es].es-dirty { outline: 2px solid #f59e0b !important; outline-offset: 3px; }
-    html.es-on [data-es].es-dirty:focus { outline-color: #2563eb !important; }
+    /* Unsaved text turns red (no box); an unsaved image, which has no text, gets a red outline. */
+    html.es-on [data-es].es-dirty:not(img), html.es-on [data-es].es-dirty:not(img) * { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; }
+    html.es-on [data-es].es-dirty:not(img):not(:focus):not(:hover) { outline: none !important; }
+    html.es-on img[data-es].es-dirty { outline: 2px solid #dc2626 !important; outline-offset: 3px; }
     html.es-on body { padding-bottom: 88px !important; }
   `;
   document.head.appendChild(pageStyle);
@@ -46,7 +48,7 @@
       .brand { font-weight: 600; letter-spacing: -.01em; white-space: nowrap; }
       select { font: inherit; padding: 6px 8px; border: 1px solid #d4d4d8; border-radius: 8px; background: #fff; color: #111; max-width: 180px; }
       .status { color: #52525b; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-      .status.dirty { color: #b45309; }
+      .status.dirty { color: #dc2626; }
       .status.error { color: #b91c1c; }
       button { font: inherit; border-radius: 8px; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
       .ghost { background: #fff; color: #111; border: 1px solid #d4d4d8; }
