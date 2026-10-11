@@ -64,7 +64,10 @@ function tidySpaces(html) {
     prev = html;
     html = html.replace(/&nbsp;(?= )|(?<= )&nbsp;|^&nbsp;|&nbsp;$/g, ' ');
   } while (html !== prev);
-  return html.replace(/(?<=\S) {2,}/g, ' ').replace(/^ +| +$/g, '');
+  return html.replace(/(?<=\S) {2,}/g, ' ')
+    // No spaces hugging a line break, and no break left dangling at the end.
+    .replace(/ *<br> */g, '<br>').replace(/(<br>)+$/, '')
+    .replace(/^ +| +$/g, '');
 }
 
 export function sanitizeInline(html) {

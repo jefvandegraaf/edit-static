@@ -105,6 +105,10 @@ test('browser-typed non-breaking spaces become plain ones; word glue stays', () 
   assert.equal(sanitizeInline('a   b'), 'a b');
 });
 
+test('line breaks the author typed are kept, without stray spaces or a trailing break', () => {
+  assert.equal(sanitizeInline('Edit static sites <br> in seconds.<br>'), 'Edit static sites<br>in seconds.');
+});
+
 test('unknown region ids are reported, not applied', () => {
   const { html, errors } = applyEdits(PAGE, [{ id: 99, html: 'x' }]);
   assert.equal(html, PAGE);
