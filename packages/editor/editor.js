@@ -26,10 +26,11 @@
     html.es-on img[data-es] { cursor: pointer; }
     html.es-on [data-es]:hover { outline: 2px dashed #2563eb !important; outline-offset: 3px; }
     html.es-on [data-es]:focus { outline: 2px solid #2563eb !important; outline-offset: 3px; }
-    /* Unsaved text turns red (no box); an unsaved image, which has no text, gets a red outline. */
-    html.es-on [data-es].es-dirty:not(img), html.es-on [data-es].es-dirty:not(img) * { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; }
+    /* Unsaved text turns red (no box); an unsaved image, which has no text, gets a red outline.
+       Both stay visible in Preview, so Preview shows exactly what Save all will change. */
+    [data-es].es-dirty:not(img), [data-es].es-dirty:not(img) * { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; }
     html.es-on [data-es].es-dirty:not(img):not(:focus):not(:hover) { outline: none !important; }
-    html.es-on img[data-es].es-dirty { outline: 2px solid #dc2626 !important; outline-offset: 3px; }
+    img[data-es].es-dirty { outline: 2px solid #dc2626 !important; outline-offset: 3px; }
     html.es-on body { padding-bottom: 88px !important; }
   `;
   document.head.appendChild(pageStyle);
