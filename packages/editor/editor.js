@@ -362,8 +362,8 @@
   }
 
   ui.save.addEventListener('click', save);
-  // web mode: end the editing session on this browser (the page reloads as visitors see it)
-  if (cfg.mode === 'web') {
+  // web version (static or dom): end the editing session on this browser (the page reloads as visitors see it)
+  if (cfg.mode === 'static' || cfg.mode === 'dom') {
     ui.logout.hidden = false;
     ui.logout.addEventListener('click', async () => {
       if (dirtyCount() && !confirm('Log out? Your unsaved changes will be lost.')) return;

@@ -62,6 +62,12 @@ import { annotate, findRegions, hashText, sanitizeInline, INLINE } from '../../p
     const inject = `<script id="editstatic-config" type="application/json">${JSON.stringify(cfg).replace(/</g, '\\u003c')}</script>`
       + '<script src="/__es/editor" defer></script>';
     const html = annotate(source, { inject }).html;
+    // the page is about to be drawn again from scratch: stop the first copy's timers and animation
+    // loops, or every animation on the page runs twice (and heavy pages crawl)
+    const lastT = setTimeout(() => {}, 0);
+    for (let i = 0; i <= lastT; i++) { clearTimeout(i); clearInterval(i); }
+    const lastR = requestAnimationFrame(() => {});
+    for (let i = 0; i <= lastR; i++) cancelAnimationFrame(i);
     document.open();
     document.write(html);
     document.close();
