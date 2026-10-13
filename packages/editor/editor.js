@@ -88,6 +88,7 @@
       <span class="status" aria-live="polite">No changes</span>
       <button type="button" class="ghost discard" disabled>Discard</button>
       <button type="button" class="save" disabled>Save all</button>
+      <button type="button" class="ghost logout" hidden>Log out</button>
     </div>
     <div class="pop" hidden role="dialog" aria-label="Image">
       <strong>Image</strong>
@@ -102,7 +103,7 @@
   const $ = sel => shadow.querySelector(sel);
   const ui = {
     pages: $('.pages'), status: $('.status'), discard: $('.discard'), save: $('.save'),
-    edit: $('.mode-edit'), preview: $('.mode-preview'),
+    edit: $('.mode-edit'), preview: $('.mode-preview'), logout: $('.logout'),
     pop: $('.pop'), replace: $('.replace'), file: $('.file'), alt: $('.alt'), popClose: $('.pop-close'),
   };
 
@@ -345,6 +346,16 @@
   }
 
   ui.save.addEventListener('click', save);
+  // web mode: end the editing session on this browser (the page reloads as visitors see it)
+  if (cfg.mode === 'web') {
+    ui.logout.hidden = false;
+    ui.logout.addEventListener('click', async () => {
+      if (dirtyCount() && !confirm('Log out? Your unsaved changes will be lost.')) return;
+      touched.clear();
+      try { await api('logout', { method: 'POST' }); } catch {}
+      location.href = location.pathname;
+    });
+  }
   ui.discard.addEventListener('click', discard);
   ui.edit.addEventListener('click', () => setEditing(true));
   ui.preview.addEventListener('click', () => setEditing(false));

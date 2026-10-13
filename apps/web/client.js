@@ -50,6 +50,12 @@ import { annotate, findRegions, hashText, sanitizeInline } from '../../packages/
       + `<script src="/assets/editstatic/editor.js" defer></script>`;
     const prepare = window.editstaticPrepare;
     const html = annotate(source, { inject }).html;
+    // the page is about to be drawn again from scratch: stop the first copy's timers and animation
+    // loops, or every animation on the page runs twice (and heavy pages crawl)
+    const lastT = setTimeout(() => {}, 0);
+    for (let i = 0; i <= lastT; i++) { clearTimeout(i); clearInterval(i); }
+    const lastR = requestAnimationFrame(() => {});
+    for (let i = 0; i <= lastR; i++) cancelAnimationFrame(i);
     document.open();
     document.write(html);
     document.close();

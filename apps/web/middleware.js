@@ -56,6 +56,10 @@ async function api(ctx, url) {
     if (typeof password !== 'string' || !same(password, env.EDIT_PASSWORD)) return json({ error: 'Wrong password' }, 401);
     return json({ ok: true }, 200, { 'Set-Cookie': `${COOKIE}=${await token(env)}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Strict` });
   }
+  if (route === 'logout' && req.method === 'POST') {
+    if (!trusted(req, url)) return json({ error: 'Forbidden' }, 403);
+    return json({ ok: true }, 200, { 'Set-Cookie': `${COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict` });
+  }
   if (!(await authed(req, env))) return json({ error: 'Log in first: add ?edit to the address' }, 401);
   if (route === 'pages' && req.method === 'GET') {
     // the page menu: every URL in the site's sitemaps (sitemap.xml, or a sitemap index and its files)
