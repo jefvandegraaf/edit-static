@@ -20,6 +20,7 @@
   const imageEdits = new Map(); // el -> {src?, alt?, width?, height?}
   let editing = true;
   let saving = false;
+  let drafts = null; // while Preview shows the page before the changes: el -> the unsaved draft
 
   // ---------- page styles (outlines live in the page, the bar lives in a shadow root) ----------
   const pageStyle = document.createElement('style');
@@ -29,7 +30,7 @@
     html.es-on [data-es]:hover { outline: 2px dashed #2563eb !important; outline-offset: 3px; }
     html.es-on [data-es]:focus { outline: 2px solid #2563eb !important; outline-offset: 3px; }
     /* Unsaved text turns red (no box); an unsaved image, which has no text, gets a red outline.
-       Both stay visible in Preview, so Preview shows exactly what Save all will change. */
+       Preview puts the original back (see showBefore), so it shows the page before the changes. */
     [data-es].es-dirty:not(img), [data-es].es-dirty:not(img) * { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; }
     html.es-on [data-es].es-dirty:not(img):not(:focus):not(:hover) { outline: none !important; }
     img[data-es].es-dirty { outline: 2px solid #dc2626 !important; outline-offset: 3px; }
@@ -115,19 +116,22 @@
   // Only text the author typed in counts: page scripts that animate or decorate text (a scrambling
   // tagline, injected spans) change innerHTML too, and must never be saved as edits.
   const touched = new Set();
-  const isDirty = el => el.tagName === 'IMG' ? imageEdits.has(el) : touched.has(el) && el.innerHTML !== original.get(el);
+  const isDirty = el => drafts ? drafts.has(el) : el.tagName === 'IMG' ? imageEdits.has(el) : touched.has(el) && el.innerHTML !== original.get(el);
   const dirtyCount = () => regions.filter(isDirty).length;
 
   function refresh(message, tone) {
     const n = dirtyCount();
-    for (const el of regions) el.classList.toggle('es-dirty', isDirty(el));
+    for (const el of regions) el.classList.toggle('es-dirty', !drafts && isDirty(el));
+    ui.preview.disabled = !n && !drafts;
     ui.discard.disabled = !n || saving;
     ui.save.disabled = !n || saving;
-    ui.status.className = 'status' + (tone ? ' ' + tone : n ? ' dirty' : '');
-    ui.status.textContent = message || (n ? `${n} unsaved change${n === 1 ? '' : 's'}` : 'No changes');
+    ui.status.className = 'status' + (tone ? ' ' + tone : n && !drafts ? ' dirty' : '');
+    ui.status.textContent = message || (drafts ? `Before your ${n} change${n === 1 ? '' : 's'}` : n ? `${n} unsaved change${n === 1 ? '' : 's'}` : 'No changes');
   }
 
   function setEditing(on) {
+    if (!on && editing && !drafts) showBefore();
+    if (on && drafts) showDrafts();
     editing = on;
     root.classList.toggle('es-on', on);
     ui.edit.setAttribute('aria-pressed', String(on));
@@ -151,6 +155,22 @@
       }
     }
     if (!on) closePop();
+    refresh();
+  }
+
+  // Preview shows the page as it was before the unsaved changes: the drafts are set aside and
+  // come back on Edit, Save all or Discard.
+  const imgState = img => ({ src: img.getAttribute('src'), alt: img.getAttribute('alt'), srcset: img.getAttribute('srcset') });
+  const setImg = (img, s) => { for (const k of ['src', 'alt', 'srcset']) s[k] == null ? img.removeAttribute(k) : img.setAttribute(k, s[k]); };
+  function showBefore() {
+    const changed = regions.filter(isDirty);
+    drafts = new Map(changed.map(el => [el, el.tagName === 'IMG' ? imgState(el) : el.innerHTML]));
+    for (const el of changed) if (el.tagName === 'IMG') setImg(el, original.get(el)); else el.innerHTML = original.get(el);
+  }
+  function showDrafts() {
+    const set = drafts;
+    drafts = null;
+    for (const [el, v] of set) if (el.tagName === 'IMG') setImg(el, v); else el.innerHTML = v;
   }
 
   for (const el of texts) original.set(el, el.innerHTML);
@@ -279,6 +299,7 @@
   }
 
   async function save() {
+    if (drafts) setEditing(true);
     if (saving || !dirtyCount()) return;
     saving = true;
     refresh('Saving…');
@@ -349,6 +370,7 @@
   }
 
   function discard() {
+    if (drafts) setEditing(true);
     for (const el of texts) if (isDirty(el)) el.innerHTML = original.get(el);
     for (const el of imageEdits.keys()) {
       const o = original.get(el);
