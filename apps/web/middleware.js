@@ -90,8 +90,13 @@ async function api(ctx, url) {
 
 export async function onRequest(ctx) {
   const { request: req, env, next } = ctx;
-  if (!env.EDIT_PASSWORD || !env.GITHUB_TOKEN || !env.GITHUB_REPO || !env.GITHUB_BRANCH) return next();
   const url = new URL(req.url);
+  // setup check: which settings this deployment can see (names only, never values)
+  if (url.pathname === '/__es/api/health') {
+    const missing = ['EDIT_PASSWORD', 'GITHUB_TOKEN', 'GITHUB_REPO', 'GITHUB_BRANCH'].filter((k) => !env[k]);
+    return json({ editstatic: true, ready: !missing.length && (!env.EDIT_HOST || url.host === env.EDIT_HOST), missing, host: url.host, editHost: env.EDIT_HOST || null });
+  }
+  if (!env.EDIT_PASSWORD || !env.GITHUB_TOKEN || !env.GITHUB_REPO || !env.GITHUB_BRANCH) return next();
   if (env.EDIT_HOST && url.host !== env.EDIT_HOST) return next();
   if (url.pathname.startsWith('/__es/api/')) return api(ctx, url);
   const res = await next();
