@@ -1,0 +1,36 @@
+# EditStatic: writes text edits made on the editing deployment into the source files.
+# The deployment queues each save in .editstatic/pending/; this applies it (or records why a line
+# couldn't be saved, which the editor shows), commits, and pushes, which redeploys the branch.
+# Installed by `npx github:jefvandegraaf/edit-static init`.
+name: EditStatic
+on:
+  push:
+    branches: [__BRANCH__]
+    paths: [".editstatic/pending/**"]
+  workflow_dispatch:
+concurrency:
+  group: editstatic
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: __BRANCH__
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply queued edits
+        run: npx --yes --package github:jefvandegraaf/edit-static#__VERSION__ editstatic apply
+      - name: Commit and push
+        run: |
+          git config user.name "EditStatic"
+          git config user.email "editstatic@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "Nothing to commit"; exit 0; fi
+          git commit -m "EditStatic: apply text edits"
+          git pull --rebase origin __BRANCH__
+          git push origin HEAD:__BRANCH__

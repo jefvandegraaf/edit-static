@@ -1,20 +1,32 @@
 {
   "name": "editstatic",
   "version": "0.1.0",
-  "private": true,
-  "description": "Click-to-edit for plain HTML sites. Shared editor core, local (desktop) server, live web app.",
+  "description": "Click-to-edit text for AI-built and static sites. Edit on your staging URL, the change lands in your source files on GitHub.",
   "type": "module",
-  "license": "UNLICENSED",
-  "workspaces": [
-    "packages/*",
-    "apps/*"
-  ],
+  "license": "MIT",
+  "author": "Jef van de Graaf (https://jefvandegraaf.com)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jefvandegraaf/edit-static.git"
+  },
+  "homepage": "https://github.com/jefvandegraaf/edit-static#readme",
+  "bugs": "https://github.com/jefvandegraaf/edit-static/issues",
+  "keywords": ["cms", "inline-editing", "contenteditable", "static-site", "netlify", "cloudflare-pages", "lovable", "bolt", "react", "vibe-coding"],
+  "bin": {
+    "editstatic": "bin/editstatic.js"
+  },
+  "files": ["bin", "apps", "packages", "templates", "dist"],
   "scripts": {
-    "test": "node --test \"packages/*/test/*.test.js\"",
+    "test": "node --test \"packages/*/test/*.test.js\" \"apps/*/test/*.test.js\"",
+    "build": "node apps/web/build.mjs",
     "local": "node apps/local/server.js fixtures/sample-site --port 8450"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.29.9",
+    "parse5": "^7.1.2"
   },
   "devDependencies": {
     "esbuild": "^0.24.2"

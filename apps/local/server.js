@@ -19,7 +19,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { annotate, applyEdits, hashText, findRegions, sanitizeInline } from '@editstatic/core';
+import { annotate, applyEdits, hashText, findRegions, sanitizeInline } from '../../packages/core/src/index.js';
 import { pathToFileURL } from 'node:url';
 
 const args = process.argv.slice(2);

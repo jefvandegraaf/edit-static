@@ -1,7 +1,9 @@
 // EditStatic in-page editor. Loaded into a site page that the server has tagged
 // with data-es="<id>" on every editable region (see @editstatic/core annotate).
 // Talks to the server through window config #editstatic-config:
-//   { api, page, version, pages?: [{path, title}] }
+//   { api, page, version, pages?: [{path, title}], mode?: 'static' | 'dom', lineBreaks?: false }
+// mode 'dom' is a JS app (React...) tagged on the live page: the app's own click handlers are kept
+// from firing while editing, and lineBreaks: false makes Enter finish the edit instead of adding <br>.
 // Same file runs in the local/desktop server and the live web app.
 (() => {
   'use strict';
@@ -31,6 +33,8 @@
     [data-es].es-dirty:not(img), [data-es].es-dirty:not(img) * { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; }
     html.es-on [data-es].es-dirty:not(img):not(:focus):not(:hover) { outline: none !important; }
     img[data-es].es-dirty { outline: 2px solid #dc2626 !important; outline-offset: 3px; }
+    /* saved but refused by the site's build (web mode): hover shows why */
+    [data-es].es-refused { outline: 2px dashed #dc2626 !important; outline-offset: 3px; }
     html.es-on body { padding-bottom: 88px !important; }
   `;
   document.head.appendChild(pageStyle);
@@ -165,7 +169,8 @@
     if (!el) return;
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (!ONE_LINE.has(el.tagName)) document.execCommand('insertLineBreak');
+      if (cfg.lineBreaks === false) el.blur();
+      else if (!ONE_LINE.has(el.tagName)) document.execCommand('insertLineBreak');
     }
     if (e.key === 'Escape') el.blur();
   }, true);
@@ -185,7 +190,9 @@
     if (!editing || e.composedPath().includes(host)) return;
     const img = e.target.closest?.('img[data-es]');
     if (img) { e.preventDefault(); e.stopPropagation(); openPop(img); return; }
-    if (e.target.closest?.('a, button, input[type=submit], label, summary')) { e.preventDefault(); }
+    if (e.target.closest?.('a, button, input[type=submit], label, summary')) e.preventDefault();
+    // a JS app would still run its own handler (open a menu, change route): stop it here
+    if (cfg.mode === 'dom' && e.target.closest?.('[data-es], a, button')) e.stopPropagation();
     if (!e.target.closest?.('[data-es]')) closePop();
   }, true);
   document.addEventListener('submit', e => { if (editing) e.preventDefault(); }, true);
@@ -291,8 +298,10 @@
         saving = false;
         for (const el of texts) original.set(el, el.innerHTML);
         imageEdits.clear(); touched.clear();
+        if (typeof window.editstaticSaved === 'function') window.editstaticSaved(res.applied || []);
+        for (const el of document.querySelectorAll('.es-refused')) { el.classList.remove('es-refused'); el.removeAttribute('title'); }
         refresh('Saved. Publishing…');
-        watch(res.id);
+        watch(res.id, res.applied || []);
         return;
       }
       if (res.errors?.length) {
@@ -321,14 +330,21 @@
   }
 
   // web mode: poll until the build has applied the edit, then say so (or say what couldn't be saved)
-  function watch(id, tries = 0) {
+  // ids: the regions the save sent, in order; a result error's index points into it
+  function watch(id, ids, tries = 0) {
     if (tries > 40) { refresh('Still publishing. Refresh in a minute to see it.'); return; }
     setTimeout(async () => {
       let st;
-      try { st = await api('status?id=' + encodeURIComponent(id)); } catch { return watch(id, tries + 1); }
-      if (!st.done) { refresh('Saved. Publishing…'); return watch(id, tries + 1); }
-      if (st.errors?.length) refresh(`Not saved: ${st.errors[0].error}`, 'error');
-      else refresh('Published. Live in about a minute.');
+      try { st = await api('status?id=' + encodeURIComponent(id)); } catch { return watch(id, ids, tries + 1); }
+      if (!st.done) { refresh('Saved. Publishing…'); return watch(id, ids, tries + 1); }
+      if (st.errors?.length) {
+        for (const e of st.errors) {
+          const el = document.querySelector(`[data-es="${ids[e.index]}"]`);
+          if (el) { el.classList.add('es-refused'); el.title = 'Not saved: ' + e.error; }
+        }
+        const n = st.errors.length;
+        refresh(`${st.applied ? `Published ${st.applied}. ` : ''}${n} not saved: ${st.errors[0].error}`, 'error');
+      } else refresh('Published. Live in about a minute.');
     }, 6000);
   }
 
@@ -366,6 +382,16 @@
   async function loadPages() {
     let pages = cfg.pages;
     if (!pages) { try { pages = (await api('pages')).pages; } catch { pages = []; } }
+    // no sitemap (most JS apps): offer the pages this one links to
+    if (!pages.length && cfg.mode === 'dom') {
+      const seen = new Set();
+      for (const a of document.querySelectorAll('a[href]')) {
+        const u = new URL(a.getAttribute('href'), location.href);
+        if (u.origin !== location.origin || seen.has(u.pathname) || /.w{2,5}$/.test(u.pathname)) continue;
+        seen.add(u.pathname);
+        pages.push({ path: u.pathname, title: u.pathname === '/' ? 'Home' : (a.textContent || '').trim().slice(0, 40) });
+      }
+    }
     if (!pages.some(p => p.path === cfg.page)) pages.unshift({ path: cfg.page, title: cfg.page });
     ui.pages.innerHTML = '';
     for (const p of pages) {
