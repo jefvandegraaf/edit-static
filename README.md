@@ -21,7 +21,7 @@ host then deploys them like any other commit.
   password and the GitHub token.
 - Edits go into your real code, so your AI tool keeps working from them. Lovable
   and Bolt pull GitHub changes back in, so once you merge, they see your words.
-- Free and open source (MIT).
+- Free and open source (MIT). [Support it](#support-editstatic) if it saves you time.
 
 ![The EditStatic bar on a React site, with unsaved changes in red](docs/editor.jpg)
 
@@ -212,6 +212,20 @@ stand-in for GitHub that writes queued saves into the folder and runs
 | `apps/local` | The local editor for plain HTML folders. |
 | `fixtures/` | A plain HTML site and a Lovable-style React site, used by the tests. |
 
+## Support EditStatic
+
+EditStatic is free. If it saves you time, you can help keep it going:
+
+- [Leave a tip](https://buy.stripe.com/dRm9ATdXydlL2pq11S38408), any amount from $3
+- [Become a Supporter](https://buy.stripe.com/5kQ28r6v62H77JK6mc3840a), $5 a month
+- [Become a Patron](https://buy.stripe.com/aFadR93iUdlL4xy25W3840c), $15 a month, with a monthly hangout
+
+Want help setting it up, or a site built for you?
+[Get in touch](https://jefvandegraaf.com/contact/).
+
 ## License
 
 MIT. Made by [Jef van de Graaf](https://jefvandegraaf.com).
+
+The MIT license covers the code. The EditStatic name and logo are not
+included: if you publish your own version, give it a different name.
