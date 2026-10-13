@@ -16,7 +16,7 @@ import { annotate, findRegions, hashText, sanitizeInline } from '../../packages/
     const box = document.createElement('div');
     box.innerHTML = `<form style="position:fixed;inset:auto 16px 16px auto;z-index:2147483647;display:flex;gap:8px;align-items:center;padding:12px;border-radius:14px;background:#101010;color:#fff;font:600 14px system-ui,sans-serif;box-shadow:0 12px 30px rgba(0,0,0,.3)">
       <label>Edit password <input type="password" required autocomplete="current-password" style="margin-left:6px;padding:8px 10px;border-radius:8px;border:0;font:inherit"></label>
-      <button style="padding:8px 14px;border-radius:8px;border:0;background:#ffdd00;font:inherit;cursor:pointer">Edit</button>
+      <button style="padding:8px 14px;border-radius:8px;border:0;background:#ffdd00 !important;color:#101010 !important;font:inherit;font-weight:700;cursor:pointer">Edit</button>
       <output style="color:#ff8a8a"></output></form>`;
     const form = box.firstElementChild;
     form.addEventListener('submit', async (e) => {
