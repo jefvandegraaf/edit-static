@@ -57,7 +57,23 @@ async function api(ctx, url) {
     return json({ ok: true }, 200, { 'Set-Cookie': `${COOKIE}=${await token(env)}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Strict` });
   }
   if (!(await authed(req, env))) return json({ error: 'Log in first: add ?edit to the address' }, 401);
-  if (route === 'pages' && req.method === 'GET') return json({ pages: [] });
+  if (route === 'pages' && req.method === 'GET') {
+    // the page menu: every URL in the site's sitemaps (sitemap.xml, or a sitemap index and its files)
+    const locs = async (p) => { const r = await env.ASSETS.fetch(new URL(p, url.origin)); return r.ok ? [...(await r.text()).matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)].map((m) => m[1]) : []; };
+    let urls = [];
+    for (const top of ['/sitemap_index.xml', '/sitemap.xml']) {
+      const found = await locs(top);
+      if (!found.length) continue;
+      const subs = found.filter((u) => /\.xml$/.test(u));
+      urls = subs.length ? (await Promise.all(subs.map((u) => locs(new URL(u).pathname)))).flat() : found;
+      break;
+    }
+    const title = (p) => p === '/' ? 'Home' : decodeURIComponent(p.replace(/\/$/, '').split('/').pop()).replace(/[-_]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
+    const pages = [...new Set(urls.map((u) => { try { return new URL(u).pathname; } catch { return null; } }).filter(Boolean))]
+      .sort((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b))
+      .map((p) => ({ path: p, title: title(p) }));
+    return json({ pages });
+  }
   if (route === 'status' && req.method === 'GET') {
     const id = (url.searchParams.get('id') || '').replace(/[^\w-]/g, '');
     const r = await gh(env, 'GET', `.editstatic/results/${id}.json?ref=${encodeURIComponent(env.GITHUB_BRANCH)}`);
