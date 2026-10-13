@@ -279,7 +279,18 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ page: cfg.page, version: cfg.version, edits }),
       });
-      if (res.errors?.length) console.warn('EditStatic: some edits were not saved', res.errors);
+      if (res.errors?.length) {
+        // Keep what wasn't saved on screen (still red) and say why; the rest is saved.
+        console.warn('EditStatic: some edits were not saved', res.errors);
+        const failed = new Set(res.errors.map(e => e.id));
+        for (const el of texts) if (isDirty(el) && !failed.has(Number(el.dataset.es))) original.set(el, el.innerHTML);
+        for (const el of [...imageEdits.keys()]) if (!failed.has(Number(el.dataset.es))) imageEdits.delete(el);
+        if (res.version) cfg.version = res.version;
+        saving = false;
+        const saved = (res.applied || []).length;
+        refresh(`${saved ? `Saved ${saved}. ` : ''}Not saved: ${res.errors[0].error}`, 'error');
+        return;
+      }
       // Region ids come from the file, and an edit can change the file's regions
       // (an emptied paragraph stops being one), so reload from the saved file.
       try { sessionStorage.setItem('editstatic-scroll', JSON.stringify({ page: cfg.page, y: scrollY, saved: true })); } catch {}

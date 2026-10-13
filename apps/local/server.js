@@ -2,24 +2,35 @@
 // writes saves straight back into the files. This is the engine the desktop app
 // wraps. Listens on 127.0.0.1 only.
 //
-//   node apps/local/server.js <site-folder> [--port 8450] [--commit] [--push]
+//   node apps/local/server.js <site-folder> [--port 8450] [--commit] [--push] [--sync <module>] [--build "<command>"]
 //
 // --commit  commit each save (the page plus any uploaded images) to the site's git repo
 // --push    also push after each commit, so a host that deploys from the repo publishes it
+// --sync    for sites built by a generator: a module (path relative to the site folder) whose
+//           default export receives each text edit as { before, after } HTML and writes it into
+//           the generator's source files. It returns one { ok, file } or { ok: false, error } per
+//           change; refused changes are not saved, so the next build can't silently undo them.
+// --build   a command run in the site folder after a synced save (e.g. "node build.js"), so the
+//           built page matches the sources again. With --commit, every file the save and build
+//           changed is committed together.
 import http from 'node:http';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
-import { annotate, applyEdits, hashText } from '@editstatic/core';
+import { annotate, applyEdits, hashText, findRegions, sanitizeInline } from '@editstatic/core';
+import { pathToFileURL } from 'node:url';
 
 const args = process.argv.slice(2);
 
 const port = Number(args[args.indexOf('--port') + 1]) || 8450;
 const COMMIT = args.includes('--commit') || args.includes('--push');
 const PUSH = args.includes('--push');
-const siteArgs = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--port');
+const opt = name => (args.indexOf(name) > -1 ? args[args.indexOf(name) + 1] : null);
+const SYNC = opt('--sync');
+const BUILD = opt('--build');
+const siteArgs = args.filter((a, i) => !a.startsWith('--') && !['--port', '--sync', '--build'].includes(args[i - 1]));
 const siteArg = siteArgs[0];
 if (!siteArg) { console.error('Usage: node apps/local/server.js <site-folder> [--port 8450] [--commit] [--push]'); process.exit(1); }
 
@@ -128,6 +139,72 @@ async function commitSave(file, count) {
   }
 }
 
+// ---------- generated sites: sync to source, rebuild, commit what changed ----------
+let syncFn = null;
+async function loadSync() {
+  if (!syncFn) syncFn = (await import(pathToFileURL(path.resolve(SITE, SYNC)).href)).default;
+  return syncFn;
+}
+const run = cmd => new Promise((resolve, reject) => {
+  execFile(process.platform === 'win32' ? 'cmd' : 'sh', process.platform === 'win32' ? ['/d', '/s', '/c', cmd] : ['-c', cmd],
+    { cwd: SITE, windowsHide: true, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => err ? reject(new Error((stderr || err.message).trim().slice(-800))) : resolve(stdout));
+});
+// dirty files and a fingerprint of each, so a commit can take exactly what this save changed
+async function dirtyState() {
+  const out = await git('status', '--porcelain', '-uall');
+  const state = new Map();
+  for (const line of out.split('\n').filter(Boolean)) {
+    const rel = line.slice(3).replace(/^"|"$/g, '');
+    // contents, not timestamps: a rebuild rewrites files without changing them
+    const data = await fs.readFile(path.join(SITE, rel)).catch(() => null);
+    state.set(rel, data ? createHash('sha1').update(data).digest('hex') : 'gone');
+  }
+  return state;
+}
+// Commits what this save changed. Files the owner already had uncommitted changes in are left out
+// (the build may rewrite them too), except the edited page and the sources the edit went into.
+async function commitChanged(before, label, must = []) {
+  const after = await dirtyState();
+  const files = [...after.keys()].filter(f => before.get(f) !== after.get(f) && (!before.has(f) || must.includes(f)));
+  if (!files.length) return false;
+  await git('add', '--', ...files);
+  await git('commit', '-m', label, '--', ...files);
+  console.log(`committed ${files.length} file(s)`);
+  if (PUSH) git('push').then(() => console.log('pushed')).catch(err => console.error('push failed:', err.message));
+  return true;
+}
+
+async function syncedSave(res, file, source, body) {
+  const { regions } = findRegions(source);
+  const changes = [], errors = [];
+  for (const edit of body.edits) {
+    const r = regions[edit.id];
+    if (!r) { errors.push({ id: edit.id, error: 'No such region' }); continue; }
+    if (r.kind !== 'text' || typeof edit.html !== 'string') { errors.push({ id: edit.id, error: 'Images can\'t be edited on this site yet' }); continue; }
+    changes.push({ id: edit.id, before: source.slice(r.innerStart, r.innerEnd), after: sanitizeInline(edit.html) });
+  }
+  const before = COMMIT ? await dirtyState() : null;
+  const sync = await loadSync();
+  const results = changes.length ? await sync({ root: SITE, page: toUrlPath(file), file, changes: changes.map(({ before, after }) => ({ before, after })) }) : [];
+  const ok = changes.filter((c, i) => results[i]?.ok);
+  changes.forEach((c, i) => { if (!results[i]?.ok) errors.push({ id: c.id, error: results[i]?.error || 'Could not find this text in the source files' }); });
+  let html = source;
+  if (ok.length) {
+    html = applyEdits(source, ok.map(c => ({ id: c.id, html: c.after }))).html;
+    await fs.writeFile(file, html, 'utf8');
+    if (BUILD) { await run(BUILD); html = await fs.readFile(file, 'utf8').catch(() => html); }
+  }
+  const synced = ok.map((c, i) => results[changes.indexOf(c)].file);
+  console.log(`saved ${path.relative(SITE, file)}: ${ok.length} edit(s) -> ${[...new Set(synced)].join(', ') || 'nothing'}${errors.length ? `, ${errors.length} refused` : ''}`);
+  let committed = false;
+  if (COMMIT && ok.length) {
+    const must = [path.relative(SITE, file), ...synced].map(f => f.split(path.sep).join('/'));
+    try { committed = await commitChanged(before, `Edit ${toUrlPath(file)} (${ok.length} change${ok.length === 1 ? '' : 's'}) with EditStatic`, must); }
+    catch (err) { console.error('commit failed:', err.message); }
+  }
+  return json(res, 200, { ok: true, applied: ok.map(c => c.id), errors, committed, version: await hashText(html) });
+}
+
 // ---------- API ----------
 // Writes only come from the editor's own page: same Host, same Origin, and a
 // custom header a cross-site form or image tag can't send.
@@ -150,6 +227,7 @@ async function handleApi(req, res, route, query) {
     const source = await fs.readFile(file, 'utf8');
     if (body.version !== await hashText(source)) return json(res, 409, { error: 'Page changed since it was opened' });
     if (!Array.isArray(body.edits)) return json(res, 400, { error: 'No edits' });
+    if (SYNC) return await syncedSave(res, file, source, body);
     const result = applyEdits(source, body.edits);
     if (result.applied.length) await fs.writeFile(file, result.html, 'utf8');
     console.log(`saved ${path.relative(SITE, file)}: ${result.applied.length} edit(s)${result.errors.length ? `, ${result.errors.length} refused` : ''}`);
@@ -205,6 +283,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`EditStatic editing ${SITE}${PUSH ? ' (commit + push on save)' : COMMIT ? ' (commit on save)' : ''}`);
+  console.log(`EditStatic editing ${SITE}${PUSH ? ' (commit + push on save)' : COMMIT ? ' (commit on save)' : ''}${SYNC ? `, syncing to source with ${SYNC}${BUILD ? ` and rebuilding with "${BUILD}"` : ''}` : ''}`);
   console.log(`Open http://127.0.0.1:${port}/`);
 });
