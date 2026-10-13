@@ -107,7 +107,10 @@
   };
 
   // ---------- state ----------
-  const isDirty = el => el.tagName === 'IMG' ? imageEdits.has(el) : el.innerHTML !== original.get(el);
+  // Only text the author typed in counts: page scripts that animate or decorate text (a scrambling
+  // tagline, injected spans) change innerHTML too, and must never be saved as edits.
+  const touched = new Set();
+  const isDirty = el => el.tagName === 'IMG' ? imageEdits.has(el) : touched.has(el) && el.innerHTML !== original.get(el);
   const dirtyCount = () => regions.filter(isDirty).length;
 
   function refresh(message, tone) {
@@ -153,7 +156,7 @@
   // the author wants. Buttons, links and other one-line labels never break.
   const ONE_LINE = new Set(['A', 'BUTTON', 'LABEL', 'SUMMARY', 'SPAN', 'SMALL', 'STRONG', 'EM', 'B', 'I', 'TIME', 'CODE', 'ABBR', 'CITE', 'Q', 'SUB', 'SUP']);
 
-  document.addEventListener('input', e => { if (e.target.closest?.('[data-es]')) refresh(); }, true);
+  document.addEventListener('input', e => { const r = e.target.closest?.('[data-es]'); if (r) { if (!touched.has(r)) { touched.add(r); if (!original.has(r)) original.set(r, r.innerHTML); } refresh(); } }, true);
 
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); return; }
@@ -275,10 +278,22 @@
     for (const el of texts) if (isDirty(el)) edits.push({ id: Number(el.dataset.es), html: el.innerHTML });
     for (const [el, change] of imageEdits) edits.push({ id: Number(el.dataset.es), ...change });
     try {
+      const payload = { page: cfg.page, version: cfg.version, edits };
+      // web mode: the loader (apps/web/client.js) adds each edit's before/after HTML, so the server needn't parse the page
+      if (typeof window.editstaticPrepare === 'function') Object.assign(payload, window.editstaticPrepare(edits));
       const res = await api('save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ page: cfg.page, version: cfg.version, edits }),
+        body: JSON.stringify(payload),
       });
+      if (res.pending) {
+        // Web mode: the edit is queued; the site's build applies it and redeploys. Keep the text, report progress.
+        saving = false;
+        for (const el of texts) original.set(el, el.innerHTML);
+        imageEdits.clear(); touched.clear();
+        refresh('Saved. Publishing…');
+        watch(res.id);
+        return;
+      }
       if (res.errors?.length) {
         // Keep what wasn't saved on screen (still red) and say why; the rest is saved.
         console.warn('EditStatic: some edits were not saved', res.errors);
@@ -296,12 +311,24 @@
       try { sessionStorage.setItem('editstatic-scroll', JSON.stringify({ page: cfg.page, y: scrollY, saved: true })); } catch {}
       saving = false;
       for (const el of texts) original.set(el, el.innerHTML);
-      imageEdits.clear();
+      imageEdits.clear(); touched.clear();
       location.reload();
     } catch (err) {
       saving = false;
       refresh(err.status === 409 ? 'This page was changed elsewhere. Reload to get the latest.' : err.message, 'error');
     }
+  }
+
+  // web mode: poll until the build has applied the edit, then say so (or say what couldn't be saved)
+  function watch(id, tries = 0) {
+    if (tries > 40) { refresh('Still publishing. Refresh in a minute to see it.'); return; }
+    setTimeout(async () => {
+      let st;
+      try { st = await api('status?id=' + encodeURIComponent(id)); } catch { return watch(id, tries + 1); }
+      if (!st.done) { refresh('Saved. Publishing…'); return watch(id, tries + 1); }
+      if (st.errors?.length) refresh(`Not saved: ${st.errors[0].error}`, 'error');
+      else refresh('Published. Live in about a minute.');
+    }, 6000);
   }
 
   function discard() {
@@ -312,7 +339,7 @@
       o.alt == null ? el.removeAttribute('alt') : el.setAttribute('alt', o.alt);
       if (o.srcset) el.setAttribute('srcset', o.srcset);
     }
-    imageEdits.clear();
+    imageEdits.clear(); touched.clear();
     closePop();
     refresh();
   }
@@ -338,7 +365,7 @@
   ui.pages.addEventListener('change', () => {
     const target = ui.pages.value;
     if (dirtyCount() && !confirm('Leave this page? Your unsaved changes will be lost.')) { ui.pages.value = cfg.page; return; }
-    imageEdits.clear();
+    imageEdits.clear(); touched.clear();
     for (const el of texts) original.set(el, el.innerHTML);
     location.href = target;
   });
