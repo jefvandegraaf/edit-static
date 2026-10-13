@@ -1,3 +1,10 @@
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+    <img src="docs/logo-light.svg" alt="EditStatic logo: a text caret between two HTML angle brackets" width="72" height="72">
+  </picture>
+</p>
+
 # EditStatic
 
 **Click any text on your site, fix it, press Save. The change lands in your source code.**
