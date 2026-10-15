@@ -32,6 +32,15 @@ host then deploys them like any other commit.
 
 ![The EditStatic bar on a React site, with unsaved changes in red](docs/editor.jpg)
 
+## Editing
+
+- Click any text and type. Unsaved edits get a green outline, and the bar counts them.
+- Select text for the formatting bar: **B**, *I*, **Link** and **Unlink**
+  (Ctrl/Cmd+B, I, K). Links to other sites open in a new tab.
+- **Original** shows the page as it was before your unsaved changes. **Edit**
+  puts them back.
+- **Save all** (Ctrl/Cmd+S) publishes them. **Discard** throws them away.
+
 ## How it works
 
 1. You open a page on the staging deployment with `?edit`. A small edge
@@ -154,6 +163,19 @@ Would be saved to src/components/Hero.tsx:8
 - `ignore`: extra folder names or paths to skip.
 - `build`: a command the Action runs after applying edits. Only needed if your
   repo contains its built pages (most sites let the host build, so leave it `null`).
+
+Turn on editing that changes a page's structure, not just its words, with a meta
+tag. These need your site's sync to understand them, so they're off by default:
+
+```html
+<meta name="editstatic-features" content="paragraphs lists remove-empty">
+```
+
+- `paragraphs`: Enter in a paragraph or list item starts a new one (sent as a
+  blank line). Without it, Enter is a line break.
+- `lists`: a **List** button that puts `- ` before the selected lines, to be
+  saved as a bullet list.
+- `remove-empty`: an emptied block is flagged "removed when you save".
 
 Mark parts of a page in HTML or JSX:
 

@@ -11,6 +11,7 @@
   if (!cfgEl || window.__editstatic) return;
   window.__editstatic = true;
   const cfg = JSON.parse(cfgEl.textContent);
+  const FEATURES = new Set((document.querySelector('meta[name="editstatic-features"]')?.content || '').split(/[\s,]+/).filter(Boolean));
 
   const root = document.documentElement;
   const regions = [...document.querySelectorAll('[data-es]')];
@@ -145,7 +146,7 @@
   function refresh(message, tone) {
     const n = dirtyCount();
     for (const el of regions) el.classList.toggle('es-dirty', !drafts && isDirty(el));
-    for (const el of regions) el.classList.toggle('es-empty', !drafts && el.tagName !== 'IMG' && isDirty(el) && !el.textContent.trim());
+    for (const el of regions) el.classList.toggle('es-empty', FEATURES.has('remove-empty') && !drafts && el.tagName !== 'IMG' && isDirty(el) && !el.textContent.trim());
     ui.preview.disabled = !n && !drafts;
     ui.discard.disabled = !n || saving;
     ui.save.disabled = !n || saving;
@@ -203,6 +204,13 @@
   // ---------- text editing ----------
   // Enter puts a line break (<br>) where the caret is, so a heading breaks where
   // the author wants. Buttons, links and other one-line labels never break.
+  // Opt-in behaviours that need the site's sync to understand them (they change structure, not just text):
+  //   <meta name="editstatic-features" content="paragraphs lists remove-empty">
+  // paragraphs: Enter in a <p>/<li> sends a blank line (<br><br>) the sync splits into a new <p>/<li>;
+  // lists: a List button puts "- " before selected lines for the sync to save as <ul>;
+  // remove-empty: an emptied block is flagged, and the sync removes the element.
+  // Without the meta tag, Enter is a plain line break and none of these show.
+  // (FEATURES is read at the top of the editor, next to cfg)
   // In a paragraph or list item, Enter starts a new one (sent as a blank line, <br><br>, which the site's
   // sync turns into </p><p>); Shift+Enter is a plain line break.
   const PARAGRAPH = new Set(['P', 'LI']);
@@ -217,7 +225,7 @@
     if (e.key === 'Enter') {
       e.preventDefault();
       if (cfg.lineBreaks === false) el.blur();
-      else if (!ONE_LINE.has(el.tagName)) { document.execCommand('insertLineBreak'); if (!e.shiftKey && PARAGRAPH.has(el.tagName)) document.execCommand('insertLineBreak'); }
+      else if (!ONE_LINE.has(el.tagName)) { document.execCommand('insertLineBreak'); if (!e.shiftKey && FEATURES.has('paragraphs') && PARAGRAPH.has(el.tagName)) document.execCommand('insertLineBreak'); }
     }
     if (e.key === 'Escape') el.blur();
   }, true);
@@ -265,7 +273,7 @@
     btn('italic').setAttribute('aria-pressed', String(document.queryCommandState('italic')));
     btn('link').hidden = region.tagName === 'A';            // a link label can't hold another link
     btn('unlink').hidden = !linkIn(region, sel.anchorNode);
-    btn('list').hidden = region.tagName !== 'P';               // bullets are made from paragraph lines
+    btn('list').hidden = !FEATURES.has('lists') || region.tagName !== 'P'; // bullets are made from paragraph lines
     place(fmt, sel.getRangeAt(0).getBoundingClientRect());
   }
   function openLink() {
