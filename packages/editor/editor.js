@@ -119,6 +119,7 @@
     <div class="fmt" hidden role="toolbar" aria-label="Format">
       <button type="button" data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
       <button type="button" data-cmd="italic" title="Italic (Ctrl+I)"><i style="font-family:Georgia,serif">I</i></button>
+      <button type="button" data-cmd="list" title="Bullet list: each selected line becomes a bullet when you save">&bull; List</button>
       <button type="button" data-cmd="link" title="Link (Ctrl+K)">Link</button>
       <button type="button" data-cmd="unlink" title="Remove the link" hidden>Unlink</button>
     </div>
@@ -264,6 +265,7 @@
     btn('italic').setAttribute('aria-pressed', String(document.queryCommandState('italic')));
     btn('link').hidden = region.tagName === 'A';            // a link label can't hold another link
     btn('unlink').hidden = !linkIn(region, sel.anchorNode);
+    btn('list').hidden = region.tagName !== 'P';               // bullets are made from paragraph lines
     place(fmt, sel.getRangeAt(0).getBoundingClientRect());
   }
   function openLink() {
@@ -315,10 +317,36 @@
     }
     region.dispatchEvent(new Event('input', { bubbles: true }));
   }
+  // Bullets: put "- " at the start of every line the selection touches (a line ends at a <br>).
+  // The site's sync saves "- " lines in a paragraph as a real <ul> list.
+  function bulletLines(region) {
+    const range = getSelection().getRangeAt(0);
+    const after = n => ({ node: n.parentNode, offset: Array.prototype.indexOf.call(n.parentNode.childNodes, n) + 1 });
+    let first = { node: region, offset: 0 };
+    const more = [];
+    const walker = document.createTreeWalker(region, NodeFilter.SHOW_ELEMENT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.nodeName !== 'BR') continue;
+      const at = after(n);
+      const where = range.comparePoint(at.node, at.offset);
+      if (where < 0) first = at; else if (where === 0) more.push(at); else break;
+    }
+    const lines = [first, ...more].map(pt => { const r = document.createRange(); r.setStart(pt.node, pt.offset); r.collapse(true); return r; });
+    for (const r of lines.reverse()) {
+      const rest = document.createRange();
+      rest.setStart(r.startContainer, r.startOffset);
+      rest.setEnd(region, region.childNodes.length);
+      if (/^\s*[-•]\s/.test(rest.toString())) continue; // already a bullet
+      r.insertNode(document.createTextNode('- '));
+    }
+    region.normalize();
+    region.dispatchEvent(new Event('input', { bubbles: true }));
+  }
   fmt.addEventListener('mousedown', e => e.preventDefault()); // keep the page selection
   fmt.addEventListener('click', e => {
     const cmd = e.target.closest('button')?.dataset.cmd;
     if (!cmd) return;
+    if (cmd === 'list') { const r = selRegion(); if (r) bulletLines(r); updateFmt(); return; }
     if (cmd === 'link') { openLink(); return; }
     if (cmd === 'unlink') {
       const region = selRegion(), a = region && linkIn(region, getSelection().anchorNode);
