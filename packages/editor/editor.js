@@ -33,6 +33,9 @@
        around it (green = added, as in a diff); it shows on red, yellow, black and white brands.
        Original puts the old text back (see showBefore), so it shows the page before the changes. */
     html.es-on [data-es].es-dirty:not(:focus):not(:hover) { outline: 2px solid #22c55e !important; outline-offset: 5px; }
+    /* emptied blocks: red dashed, and the whole block is removed from the source on save */
+    html.es-on [data-es].es-empty, html.es-on [data-es].es-dirty.es-empty:not(:focus):not(:hover) { outline: 2px dashed #dc2626 !important; outline-offset: 5px; min-height: 1.2em; }
+    html.es-on [data-es].es-empty:not(:focus)::after { content: "Empty: removed when you save"; color: #dc2626; font: 600 12px/1.2 system-ui, sans-serif; }
     /* saved but refused by the site's build (web mode): hover shows why */
     [data-es].es-refused { outline: 2px dashed #dc2626 !important; outline-offset: 3px; box-shadow: 0 0 0 3px #fff !important; }
     html.es-on body { padding-bottom: 88px !important; }
@@ -141,6 +144,7 @@
   function refresh(message, tone) {
     const n = dirtyCount();
     for (const el of regions) el.classList.toggle('es-dirty', !drafts && isDirty(el));
+    for (const el of regions) el.classList.toggle('es-empty', !drafts && el.tagName !== 'IMG' && isDirty(el) && !el.textContent.trim());
     ui.preview.disabled = !n && !drafts;
     ui.discard.disabled = !n || saving;
     ui.save.disabled = !n || saving;
@@ -198,6 +202,9 @@
   // ---------- text editing ----------
   // Enter puts a line break (<br>) where the caret is, so a heading breaks where
   // the author wants. Buttons, links and other one-line labels never break.
+  // In a paragraph or list item, Enter starts a new one (sent as a blank line, <br><br>, which the site's
+  // sync turns into </p><p>); Shift+Enter is a plain line break.
+  const PARAGRAPH = new Set(['P', 'LI']);
   const ONE_LINE = new Set(['A', 'BUTTON', 'LABEL', 'SUMMARY', 'SPAN', 'SMALL', 'STRONG', 'EM', 'B', 'I', 'TIME', 'CODE', 'ABBR', 'CITE', 'Q', 'SUB', 'SUP']);
 
   document.addEventListener('input', e => { const r = e.target.closest?.('[data-es]'); if (r) { if (!touched.has(r)) { touched.add(r); if (!original.has(r)) original.set(r, r.innerHTML); } refresh(); } }, true);
@@ -209,7 +216,7 @@
     if (e.key === 'Enter') {
       e.preventDefault();
       if (cfg.lineBreaks === false) el.blur();
-      else if (!ONE_LINE.has(el.tagName)) document.execCommand('insertLineBreak');
+      else if (!ONE_LINE.has(el.tagName)) { document.execCommand('insertLineBreak'); if (!e.shiftKey && PARAGRAPH.has(el.tagName)) document.execCommand('insertLineBreak'); }
     }
     if (e.key === 'Escape') el.blur();
   }, true);
