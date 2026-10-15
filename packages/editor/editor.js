@@ -71,6 +71,16 @@
       .pop .row { display: flex; gap: 8px; margin-top: 12px; }
       .pop .row button { flex: 1; }
       .pop .hint { color: #71717a; font-size: 12px; margin-top: 4px; }
+      .fmt { position: fixed; z-index: 2147483647; display: flex; gap: 2px; padding: 4px; background: #111; border-radius: 8px;
+        box-shadow: 0 6px 20px rgba(0,0,0,.25); font: 600 14px/1 system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .fmt button { background: transparent; color: #fff; border: 0; border-radius: 6px; padding: 7px 10px; min-width: 32px; }
+      .fmt button:hover, .fmt button[aria-pressed="true"] { background: #3f3f46; }
+      .linkbox { position: fixed; z-index: 2147483647; display: flex; gap: 6px; width: 360px; max-width: calc(100vw - 16px); padding: 6px;
+        background: #fff; border: 1px solid #d4d4d8; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.18); box-sizing: border-box;
+        font: 400 14px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif; }
+      .linkbox input { flex: 1; min-width: 0; font: inherit; padding: 7px 9px; border: 1px solid #d4d4d8; border-radius: 8px; color: #111; background: #fff; }
+      .linkbox button { padding: 7px 12px; }
+      .fmt[hidden], .linkbox[hidden], .fmt button[hidden] { display: none; }
       @media (max-width: 640px) {
         .bar { left: 8px; right: 8px; bottom: 8px; transform: none; max-width: none; gap: 6px; padding: 6px; flex-wrap: wrap; }
         .brand { display: none; }
@@ -102,6 +112,16 @@
       <input type="text" id="es-alt" class="alt" placeholder="What the image shows">
       <div class="hint">Read aloud by screen readers and used by Google.</div>
       <div class="row"><button type="button" class="ghost pop-close">Done</button></div>
+    </div>
+    <div class="fmt" hidden role="toolbar" aria-label="Format">
+      <button type="button" data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+      <button type="button" data-cmd="italic" title="Italic (Ctrl+I)"><i style="font-family:Georgia,serif">I</i></button>
+      <button type="button" data-cmd="link" title="Link (Ctrl+K)">Link</button>
+      <button type="button" data-cmd="unlink" title="Remove the link" hidden>Unlink</button>
+    </div>
+    <div class="linkbox" hidden role="dialog" aria-label="Link">
+      <input type="text" class="link-url" placeholder="Paste a link, or /page/ on this site" aria-label="Link address" autocomplete="off" spellcheck="false">
+      <button type="button" class="save link-apply">Apply</button>
     </div>`;
   document.body.appendChild(host);
   const $ = sel => shadow.querySelector(sel);
@@ -201,6 +221,118 @@
     const text = (e.clipboardData.getData('text/plain') || '').replace(/\s*\n\s*/g, ' ');
     document.execCommand('insertText', false, text);
   }, true);
+
+  // ---------- formatting: bold, italic and links on selected text ----------
+  // A small bar floats above a selection inside an editable region. Ctrl/Cmd+B and +I are the
+  // browser's own; Ctrl/Cmd+K opens the link box. The server keeps <b>, <i>, <strong>, <em> and
+  // <a href target rel>, so formatting lands in the source file like typed text.
+  const fmt = $('.fmt'), linkBox = $('.linkbox'), linkUrl = $('.link-url');
+  let linkRange = null;
+  try { document.execCommand('styleWithCSS', false, false); } catch {}
+  const elOf = node => (node?.nodeType === 1 ? node : node?.parentElement);
+  const regionOf = node => elOf(node)?.closest?.('[data-es][contenteditable]');
+  const linkIn = (region, node) => { const a = elOf(node)?.closest?.('a'); return a && a !== region && region.contains(a) ? a : null; };
+  function selRegion() {
+    const sel = getSelection();
+    if (!editing || !sel.rangeCount || sel.isCollapsed) return null;
+    const r = regionOf(sel.anchorNode);
+    return r && r === regionOf(sel.focusNode) && !r.matches('img') ? r : null;
+  }
+  function place(box, rect) {
+    box.hidden = false;
+    const w = box.offsetWidth, h = box.offsetHeight;
+    let top = rect.top - h - 10;
+    if (top < 8) top = rect.bottom + 10;
+    box.style.top = top + 'px';
+    box.style.left = Math.max(8, Math.min(rect.left + rect.width / 2 - w / 2, innerWidth - w - 8)) + 'px';
+  }
+  function updateFmt() {
+    if (!editing) { fmt.hidden = true; closeLink(false); return; }
+    if (!linkBox.hidden) return;
+    const region = selRegion();
+    if (!region) { fmt.hidden = true; return; }
+    const sel = getSelection();
+    const btn = c => fmt.querySelector(`[data-cmd="${c}"]`);
+    btn('bold').setAttribute('aria-pressed', String(document.queryCommandState('bold')));
+    btn('italic').setAttribute('aria-pressed', String(document.queryCommandState('italic')));
+    btn('link').hidden = region.tagName === 'A';            // a link label can't hold another link
+    btn('unlink').hidden = !linkIn(region, sel.anchorNode);
+    place(fmt, sel.getRangeAt(0).getBoundingClientRect());
+  }
+  function openLink() {
+    const region = selRegion();
+    if (!region || region.tagName === 'A') return;
+    const sel = getSelection();
+    linkRange = sel.getRangeAt(0).cloneRange();
+    const a = linkIn(region, sel.anchorNode);
+    linkUrl.value = a ? a.getAttribute('href') || '' : '';
+    fmt.hidden = true;
+    place(linkBox, linkRange.getBoundingClientRect());
+    linkUrl.focus();
+    linkUrl.select();
+  }
+  // put the selection back in the region (the link box took focus)
+  function restore(range) {
+    const region = regionOf(range.commonAncestorContainer);
+    region?.focus({ preventScroll: true });
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    return region;
+  }
+  function closeLink(back) {
+    if (linkBox.hidden) return;
+    linkBox.hidden = true;
+    if (back && linkRange) restore(linkRange);
+    linkRange = null;
+  }
+  function applyLink() {
+    let url = linkUrl.value.trim();
+    const range = linkRange;
+    linkBox.hidden = true;
+    linkRange = null;
+    if (!range) return;
+    const region = restore(range);
+    if (!region) return;
+    if (!url) { document.execCommand('unlink'); return; }
+    // "example.com" means https://example.com; /page/, #part, mailto: and tel: stay as typed
+    if (!/^([a-z][a-z0-9+.-]*:|\/|#|\?)/i.test(url)) url = 'https://' + url;
+    document.execCommand('createLink', false, url);
+    // links to other sites open in a new tab, like the rest of the site
+    const external = /^https?:\/\//i.test(url) && new URL(url).origin !== location.origin;
+    for (const a of region.querySelectorAll('a')) {
+      if (a.getAttribute('href') !== url) continue;
+      a.removeAttribute('style');
+      if (external) { a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
+      else { a.removeAttribute('target'); a.removeAttribute('rel'); }
+    }
+    region.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  fmt.addEventListener('mousedown', e => e.preventDefault()); // keep the page selection
+  fmt.addEventListener('click', e => {
+    const cmd = e.target.closest('button')?.dataset.cmd;
+    if (!cmd) return;
+    if (cmd === 'link') { openLink(); return; }
+    if (cmd === 'unlink') {
+      const region = selRegion(), a = region && linkIn(region, getSelection().anchorNode);
+      if (a) { const r = document.createRange(); r.selectNodeContents(a); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
+      document.execCommand('unlink');
+    } else document.execCommand(cmd);
+    updateFmt();
+  });
+  $('.link-apply').addEventListener('click', applyLink);
+  linkUrl.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); applyLink(); }
+    if (e.key === 'Escape') { e.preventDefault(); closeLink(true); }
+  });
+  document.addEventListener('selectionchange', updateFmt);
+  addEventListener('scroll', () => { if (!fmt.hidden) updateFmt(); }, { passive: true, capture: true });
+  addEventListener('resize', () => { if (!fmt.hidden) updateFmt(); });
+  document.addEventListener('mousedown', e => { if (!e.composedPath().includes(host)) closeLink(false); }, true);
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && selRegion()) { e.preventDefault(); openLink(); }
+  }, true);
+  ui.preview.addEventListener('click', () => { fmt.hidden = true; closeLink(false); });
 
   document.addEventListener('drop', e => { if (editing && e.target.closest?.('[data-es]')) e.preventDefault(); }, true);
 
