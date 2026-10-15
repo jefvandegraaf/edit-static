@@ -29,11 +29,10 @@
     html.es-on img[data-es] { cursor: pointer; }
     html.es-on [data-es]:hover { outline: 2px dashed #2563eb !important; outline-offset: 3px; }
     html.es-on [data-es]:focus { outline: 2px solid #2563eb !important; outline-offset: 3px; }
-    /* Unsaved text and images keep their own colours and get a green ring (green = added, as in a
-       diff) on a white halo, so the mark shows on any brand colour: red, yellow, black or white.
+    /* Unsaved text and images keep their own colours and get one bright green outline with room
+       around it (green = added, as in a diff); it shows on red, yellow, black and white brands.
        Original puts the old text back (see showBefore), so it shows the page before the changes. */
-    [data-es].es-dirty { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #16a34a !important; border-radius: 2px; }
-    html.es-on [data-es].es-dirty:not(:focus):not(:hover) { outline: none !important; }
+    html.es-on [data-es].es-dirty:not(:focus):not(:hover) { outline: 2px solid #22c55e !important; outline-offset: 5px; }
     /* saved but refused by the site's build (web mode): hover shows why */
     [data-es].es-refused { outline: 2px dashed #dc2626 !important; outline-offset: 3px; box-shadow: 0 0 0 3px #fff !important; }
     html.es-on body { padding-bottom: 88px !important; }
