@@ -20,7 +20,7 @@
   const imageEdits = new Map(); // el -> {src?, alt?, width?, height?}
   let editing = true;
   let saving = false;
-  let drafts = null; // while Preview shows the page before the changes: el -> the unsaved draft
+  let drafts = null; // while Original shows the page before the changes: el -> the unsaved draft
 
   // ---------- page styles (outlines live in the page, the bar lives in a shadow root) ----------
   const pageStyle = document.createElement('style');
@@ -29,13 +29,13 @@
     html.es-on img[data-es] { cursor: pointer; }
     html.es-on [data-es]:hover { outline: 2px dashed #2563eb !important; outline-offset: 3px; }
     html.es-on [data-es]:focus { outline: 2px solid #2563eb !important; outline-offset: 3px; }
-    /* Unsaved text turns red (no box); an unsaved image, which has no text, gets a red outline.
-       Preview puts the original back (see showBefore), so it shows the page before the changes. */
-    [data-es].es-dirty:not(img), [data-es].es-dirty:not(img) * { color: #dc2626 !important; -webkit-text-fill-color: #dc2626 !important; }
-    html.es-on [data-es].es-dirty:not(img):not(:focus):not(:hover) { outline: none !important; }
-    img[data-es].es-dirty { outline: 2px solid #dc2626 !important; outline-offset: 3px; }
+    /* Unsaved text and images keep their own colours and get a green ring (green = added, as in a
+       diff) on a white halo, so the mark shows on any brand colour: red, yellow, black or white.
+       Original puts the old text back (see showBefore), so it shows the page before the changes. */
+    [data-es].es-dirty { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #16a34a !important; border-radius: 2px; }
+    html.es-on [data-es].es-dirty:not(:focus):not(:hover) { outline: none !important; }
     /* saved but refused by the site's build (web mode): hover shows why */
-    [data-es].es-refused { outline: 2px dashed #dc2626 !important; outline-offset: 3px; }
+    [data-es].es-refused { outline: 2px dashed #dc2626 !important; outline-offset: 3px; box-shadow: 0 0 0 3px #fff !important; }
     html.es-on body { padding-bottom: 88px !important; }
   `;
   document.head.appendChild(pageStyle);
@@ -54,7 +54,7 @@
       .brand { font-weight: 600; letter-spacing: -.01em; white-space: nowrap; }
       select { font: inherit; padding: 6px 8px; border: 1px solid #d4d4d8; border-radius: 8px; background: #fff; color: #111; max-width: 180px; }
       .status { color: #52525b; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-      .status.dirty { color: #dc2626; }
+      .status.dirty { color: #15803d; }
       .status.error { color: #b91c1c; }
       button { font: inherit; border-radius: 8px; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
       .ghost { background: #fff; color: #111; border: 1px solid #d4d4d8; }
@@ -88,7 +88,7 @@
       <select class="pages" aria-label="Page"></select>
       <div class="toggle" role="group" aria-label="Mode">
         <button type="button" class="mode-edit" aria-pressed="true">Edit</button>
-        <button type="button" class="mode-preview" aria-pressed="false">Preview</button>
+        <button type="button" class="mode-preview" aria-pressed="false" title="Show the page before your unsaved changes">Original</button>
       </div>
       <span class="status" aria-live="polite">No changes</span>
       <button type="button" class="ghost discard" disabled>Discard</button>
@@ -158,7 +158,7 @@
     refresh();
   }
 
-  // Preview shows the page as it was before the unsaved changes: the drafts are set aside and
+  // Original shows the page as it was before the unsaved changes: the drafts are set aside and
   // come back on Edit, Save all or Discard.
   const imgState = img => ({ src: img.getAttribute('src'), alt: img.getAttribute('alt'), srcset: img.getAttribute('srcset') });
   const setImg = (img, s) => { for (const k of ['src', 'alt', 'srcset']) s[k] == null ? img.removeAttribute(k) : img.setAttribute(k, s[k]); };
