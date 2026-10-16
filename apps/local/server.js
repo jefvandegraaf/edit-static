@@ -119,7 +119,8 @@ async function servePage(res, file, urlPath) {
 // ---------- git ----------
 const git = (...gitArgs) => new Promise((resolve, reject) => {
   execFile('git', gitArgs, { cwd: SITE, windowsHide: true }, (err, stdout, stderr) =>
-    err ? reject(new Error((stderr || err.message).trim())) : resolve(stdout.trim()));
+    // trailing whitespace only: git status --porcelain lines can start with a space (" M file")
+    err ? reject(new Error((stderr || err.message).trim())) : resolve(stdout.replace(/\s+$/, '')));
 });
 
 // Images uploaded since the last commit; they go into the next save's commit.
@@ -149,14 +150,20 @@ const run = cmd => new Promise((resolve, reject) => {
   execFile(process.platform === 'win32' ? 'cmd' : 'sh', process.platform === 'win32' ? ['/d', '/s', '/c', cmd] : ['-c', cmd],
     { cwd: SITE, windowsHide: true, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => err ? reject(new Error((stderr || err.message).trim().slice(-800))) : resolve(stdout));
 });
-// dirty files and a fingerprint of each, so a commit can take exactly what this save changed
+// dirty files and a fingerprint of each, so a commit can take exactly what this save changed.
+// git status prints paths from the repo's top folder, which isn't SITE when the site is a
+// subfolder (a build's output folder, say), so each path is re-based onto SITE, the folder
+// git add and git commit run in.
+let repoTop = null;
 async function dirtyState() {
+  if (!repoTop) repoTop = path.resolve(await git('rev-parse', '--show-toplevel'));
   const out = await git('status', '--porcelain', '-uall');
   const state = new Map();
   for (const line of out.split('\n').filter(Boolean)) {
-    const rel = line.slice(3).replace(/^"|"$/g, '');
+    const full = path.join(repoTop, line.slice(3).replace(/^"|"$/g, ''));
+    const rel = path.relative(SITE, full).split(path.sep).join('/');
     // contents, not timestamps: a rebuild rewrites files without changing them
-    const data = await fs.readFile(path.join(SITE, rel)).catch(() => null);
+    const data = await fs.readFile(full).catch(() => null);
     state.set(rel, data ? createHash('sha1').update(data).digest('hex') : 'gone');
   }
   return state;
